@@ -1,0 +1,40 @@
+name: Notify DevDocs on Reviews
+
+on:
+  issue_comment:
+    types: [created, edited]
+  pull_request_target:
+    types: [opened, edited]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.pull_request || github.event.issue.pull_request }}
+    steps:
+      - name: Send Slack Notification
+        env:
+          EVENT_BODY: ${{ github.event.pull_request.body || github.event.comment.body }}
+          PR_TITLE: ${{ github.event.pull_request.title || github.event.issue.title }}
+          PR_USER: ${{ github.event.pull_request.user.login || github.event.comment.user.login }}
+          PR_URL: ${{ github.event.pull_request.html_url || github.event.comment.html_url }}
+          REPO_NAME: ${{ github.repository }}
+        run: |
+          if ! echo "$EVENT_BODY" | grep -qE "@DevDocs|@mongodb/devdocs"; then
+            echo "::notice::No '@DevDocs' or '@mongodb/devdocs' tag found. Skipping notification."
+            exit 0
+          fi
+
+          SLACK_PAYLOAD=$(jq -n \
+            --arg repo "$REPO_NAME" \
+            --arg title "$PR_TITLE" \
+            --arg user "$PR_USER" \
+            --arg url "$PR_URL" \
+            '{
+              "channel": "#docs-devdocs-notifications",
+              "username": "Issue Notifier",
+              "icon_emoji": ":mega:",
+              "text": "*📢 @DevDocs mentioned in * \($repo)\n*Title:* \($title)\n*By:* \($user)\n*URL:* \($url)"
+            }')
+
+          echo "=== payload that would be POSTed to the repo secret SLACK_WEBHOOK_URL ==="
+          printf '%s\n' "$SLACK_PAYLOAD"
